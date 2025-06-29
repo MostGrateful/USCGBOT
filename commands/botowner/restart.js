@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { sendLogEmbed } = require('../../utils/logHelper');
 
-const ALLOWED_USERS = ['1021175652243751013', '238058962711216130', '559387780606590986'];
+const OWNER_IDS = ['1021175652243751013', '238058962711216130', '559387780606590986'];
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -9,29 +10,28 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   name: 'restart',
-  description: 'Restart the bot.',
-  usage: '!restart',
+  description: 'Restart the bot (prefix)',
 
-  async execute(interactionOrMessage, client) {
-    const isInteraction = !!interactionOrMessage.isChatInputCommand;
-    const userId = isInteraction ? interactionOrMessage.user.id : interactionOrMessage.author.id;
-
-    if (!ALLOWED_USERS.includes(userId)) {
-      const reply = '❌ You are not authorized to restart the bot.';
-      return isInteraction
-        ? interactionOrMessage.reply({ content: reply, ephemeral: true })
-        : interactionOrMessage.reply(reply);
+  // Slash command
+  async execute(interaction, client) {
+    if (!OWNER_IDS.includes(interaction.user.id)) {
+      return interaction.reply({ content: '❌ You are not authorized to use this command.', ephemeral: true });
     }
 
-    const reply = '🔄 Restarting the bot...';
-    if (isInteraction) {
-      await interactionOrMessage.reply({ content: reply, ephemeral: true });
-    } else {
-      await interactionOrMessage.reply(reply);
-    }
+    await interaction.reply({ content: '♻️ Restarting bot...' });
+    await sendLogEmbed(client, interaction, 'Bot is restarting...');
 
-    console.log('🔁 Restart initiated by:', userId);
-    await client.destroy();
-    process.exit(0); // Your host should automatically restart the bot
+    process.exit(0);
+  },
+
+  // Prefix command
+  async run(message, args, client) {
+    if (!OWNER_IDS.includes(message.author.id)) return;
+
+    await message.reply('♻️ Restarting bot...');
+    await sendLogEmbed(client, message, 'Bot is restarting...');
+
+    process.exit(0);
   }
 };
+

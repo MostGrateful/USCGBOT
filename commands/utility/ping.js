@@ -1,19 +1,17 @@
 const { SlashCommandBuilder } = require('discord.js');
+const { sendLogEmbed } = require('../../utils/logHelper');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('ping')
-    .setDescription('Replies with Pong!'),
+    .setDescription('Check bot latency'),
 
-  name: 'ping', // <- For prefix usage
-  description: 'Replies with Pong!',
-  async execute(interactionOrMessage, isPrefix = false) {
-    const reply = `🏓 Pong!`;
+  async execute(interaction, client) {
+    const sent = await interaction.reply({ content: 'Pinging...', fetchReply: true });
+    const latency = sent.createdTimestamp - interaction.createdTimestamp;
 
-    if (isPrefix) {
-      interactionOrMessage.reply(reply);
-    } else {
-      await interactionOrMessage.reply(reply);
-    }
-  },
+    await interaction.editReply(`🏓 Pong! Latency is ${latency}ms.`);
+    await sendLogEmbed(client, interaction, `🏓 Ping command used. Latency: ${latency}ms.`);
+  }
 };
+

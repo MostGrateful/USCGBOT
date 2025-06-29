@@ -1,44 +1,32 @@
 const { EmbedBuilder } = require('discord.js');
 const { selectWinners } = require('./giveawayUtils');
 
-module.exports = {
-  async checkGiveaways(client) {
-    const db = client.db;
+/**
+ * Ends a giveaway and announces the winners.
+ */
+async function endGiveaway(client, giveaway, db) {
+  try {
+    const channel = await client.channels.fetch(giveaway.channel_id);
+    const message = await channel.messages.fetch(giveaway.message_id);
+    const reaction = message.reactions.cache.get('🎉');
+    if (!reaction) return;
 
-    const [rows] = await db.query(
-      'SELECT * FROM giveaways WHERE is_active = 1 AND end_time <= NOW()'
-    );
+    const users = await reaction.users.fetch();
+    const eligibleUsers = users.filter(u => !u.bot);
+    const winners = selectWinners(eligibleUsers, giveaway.winner_count);
 
-    for (const giveaway of rows) {
-      const channel = await client.channels.fetch(giveaway.channel_id).catch(() => null);
-      if (!channel) continue;
+    const resultEmbed = new EmbedBuilder()
+      .setTitle('🎉 Giveaway Ended!')
+      .setDescription(`**Prize:** ${giveaway.prize}\n**Winners:** ${winners.length > 0 ? winners.map(u => `<@${u.id}>`).join(', ') : 'No valid entries.'}`)
+      .setFooter({ text: `Giveaway ID: ${giveaway.id}` })
+      .setColor('Blue');
 
-      const message = await channel.messages.fetch(giveaway.message_id).catch(() => null);
-      if (!message) continue;
+    await message.reply({ embeds: [resultEmbed] });
 
-      const reaction = message.reactions.cache.get('🎉');
-      if (!reaction) continue;
-
-      const users = await reaction.users.fetch();
-      const filtered = users.filter(user => !user.bot);
-
-      if (filtered.size === 0) {
-        await channel.send(`🎉 The giveaway for **${giveaway.prize}** ended, but no one entered.`);
-      } else {
-        const winnerCount = Math.min(filtered.size, giveaway.winner_count);
-        const winners = selectWinners(filtered, winnerCount);
-        const winnerMentions = winners.map(u => `<@${u.id}>`).join(', ');
-
-        const embed = new EmbedBuilder()
-          .setTitle('🎉 Giveaway Ended!')
-          .setDescription(`**Prize:** ${giveaway.prize}\n**Winner(s):** ${winnerMentions}`)
-          .setColor('Green');
-
-        await channel.send({ embeds: [embed] });
-      }
-
-      await db.query('UPDATE giveaways SET is_active = 0 WHERE id = ?', [giveaway.id]);
-    }
+    await db.query(`UPDATE giveaways SET is_active = 0, winners_announced = 1 WHERE id = ?`, [giveaway.id]);
+  } catch (err) {
+    console.error(`Failed to end giveaway ${giveaway.id}:`, err);
   }
-};
+}
 
+module.exports = { endGiveaway };

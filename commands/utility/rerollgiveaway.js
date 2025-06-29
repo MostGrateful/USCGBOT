@@ -1,36 +1,35 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const giveawayUtils = require('../../utils/giveawayUtils');
+const { sendLogEmbed } = require('../../utils/logHelper');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('rerollgiveaway')
-    .setDescription('Reroll a giveaway winner')
+    .setDescription('Reroll a giveaway to select new winner(s)')
     .addStringOption(opt =>
-      opt.setName('message_id').setDescription('Message ID of the giveaway').setRequired(true))
+      opt.setName('id').setDescription('Giveaway ID').setRequired(true))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 
-  async execute(interaction) {
-    const messageId = interaction.options.getString('message_id');
-    const db = interaction.client.db;
+  async execute(interaction, client) {
+    const id = interaction.options.getString('id');
+    const db = client.db;
 
-    const [rows] = await db.query('SELECT * FROM giveaways WHERE message_id = ?', [messageId]);
-    if (rows.length === 0) {
-      return interaction.reply({ content: 'No giveaway found with that message ID.', ephemeral: true });
-    }
+    const [rows] = await db.query('SELECT * FROM giveaways WHERE id = ?', [id]);
+    if (!rows.length) return interaction.reply({ content: '❌ Giveaway not found.', ephemeral: true });
 
     const giveaway = rows[0];
-    const channel = await interaction.guild.channels.fetch(giveaway.channel_id);
+    const channel = await client.channels.fetch(giveaway.channel_id);
     const message = await channel.messages.fetch(giveaway.message_id);
-    const reaction = message.reactions.cache.get('🎉');
-    if (!reaction) return interaction.reply({ content: 'No entries found.', ephemeral: true });
+    const winners = await giveawayUtils.selectWinners(message, giveaway.winner_count);
 
-    const users = await reaction.users.fetch();
-    users.delete(interaction.client.user.id); // Remove the bot
-    if (users.size === 0) return interaction.reply({ content: 'No valid entries found.', ephemeral: true });
+    if (!winners.length) {
+      return interaction.reply('❌ No valid users to select from.');
+    }
 
-    const winners = giveawayUtils.selectWinners(users, giveaway.winner_count);
-    const winnerMentions = winners.map(u => `<@${u.id}>`).join(', ');
+    await channel.send(`🔁 New winner(s) for **${giveaway.prize}**: ${winners.map(u => `<@${u.id}>`).join(', ')}`);
+    await interaction.reply(`✅ Rerolled giveaway **${giveaway.prize}** (ID: ${id})`);
 
-    await interaction.reply(`🎉 New winner(s): ${winnerMentions}! Congratulations!`);
+    await sendLogEmbed(client, interaction, `🔁 Rerolled giveaway (ID: ${id})`);
   }
 };
+

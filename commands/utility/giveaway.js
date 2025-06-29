@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const ms = require('ms');
-const giveawayManager = require('../../utils/giveawayManager');
+const { sendLogEmbed } = require('../../utils/logHelper');
+const giveawayUtils = require('../../utils/giveawayUtils');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -14,36 +15,36 @@ module.exports = {
       opt.setName('prize').setDescription('Prize description').setRequired(true))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 
-  async execute(interaction) {
+  async execute(interaction, client) {
+    const allowedRole = '1389007098443993280';
+    if (!interaction.member.roles.cache.has(allowedRole)) {
+      return interaction.reply({ content: '❌ You do not have permission to start a giveaway.', ephemeral: true });
+    }
+
     const duration = interaction.options.getString('duration');
     const winnerCount = interaction.options.getInteger('winners');
     const prize = interaction.options.getString('prize');
-    const db = interaction.client.db;
+    const db = client.db;
 
-    // ✅ Set endsAt here
     const endsAt = new Date(Date.now() + ms(duration));
-
     const embed = new EmbedBuilder()
       .setTitle('🎉 Giveaway 🎉')
       .setDescription(`**Prize:** ${prize}\n**Ends:** <t:${Math.floor(endsAt / 1000)}:R>\nReact with 🎉 to enter!`)
-      .setColor('Random');
+      .setColor('Random')
+      .setFooter({ text: `Giveaway ID will be added after creation.` });
 
     const message = await interaction.reply({ embeds: [embed], fetchReply: true });
     await message.react('🎉');
 
-    await db.query(
-      'INSERT INTO giveaways (message_id, channel_id, guild_id, prize, winner_count, end_time, host_id, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
-      [
-        message.id,
-        message.channel.id,
-        interaction.guild.id,
-        prize,
-        winnerCount,
-        endsAt, // 👈 this will be stored in DATETIME format
-        interaction.user.id
-      ]
+    const [result] = await db.query(
+      'INSERT INTO giveaways (message_id, channel_id, guild_id, prize, winner_count, end_time, host_id, is_active, winners_announced) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0)',
+      [message.id, message.channel.id, interaction.guild.id, prize, winnerCount, endsAt, interaction.user.id]
     );
 
-    console.log(`✅ Giveaway started by ${interaction.user.tag}: ${prize}`);
+    const giveawayId = result.insertId;
+    embed.setFooter({ text: `Giveaway ID: ${giveawayId}` });
+    await message.edit({ embeds: [embed] });
+
+    await sendLogEmbed(client, interaction, `🎉 Giveaway started for **${prize}** (ID: ${giveawayId})`);
   }
 };
