@@ -1,40 +1,59 @@
-// index.js
-require('dotenv').config();
-const { Client, GatewayIntentBits, Partials } = require('discord.js');
-const db = require('./db'); // MySQL connection
-const path = require('path');
+const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs = require('fs');
-
-// Create Discord client
+const path = require('path');
+require('dotenv').config();
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ],
-  partials: [Partials.Channel]
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
+    ]
 });
+// Create a collection to store commands
+client.commands = new Collection();
+// Load commands from folders
+const commandsPath = path.join(__dirname, 'commands');
+const commandFolders = fs.readdirSync(commandsPath);
+for (const folder of commandFolders) {
+    const folderPath = path.join(commandsPath, folder);
+    const commandFiles = fs.readdirSync(folderPath).filter(file => file.endsWith('.js'));
+for (const file of commandFiles) {
+    const filePath = path.join(folderPath, file);
+    const command = require(filePath);
+    
+    if ('data' in command && 'execute' in command) {
+        client.commands.set(command.data.name, command);
+        console.log(`✅ Loaded command: ${command.data.name}`);
+    } else {
+        console.log(`⚠️ Command at ${filePath} is missing required "data" or "execute" property.`);
+    }
+}
 
-// Ready event
-client.once('ready', async () => {
-  console.log(`✅ Bot is online as ${client.user.tag}`);
+}
+// Handle slash commands
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isChatInputCommand()) return;
+const command = client.commands.get(interaction.commandName);
+if (!command) return;
 
-  // Test DB connection
-  try {
-    const [rows] = await db.query('SELECT NOW() AS time');
-    console.log('🗃️ Connected to MySQL. Server time:', rows[0].time);
-  } catch (err) {
-    console.error('❌ MySQL connection error:', err);
-  }
+try {
+    await command.execute(interaction);
+} catch (error) {
+    console.error(`Error executing ${interaction.commandName}:`, error);
+    
+    const errorMessage = { 
+        content: 'There was an error while executing this command!', 
+        ephemeral: true 
+    };
+    
+    if (interaction.replied || interaction.deferred) {
+        await interaction.followUp(errorMessage);
+    } else {
+        await interaction.reply(errorMessage);
+    }
+}
+
 });
-
-// Basic message command (temporary testing)
-client.on('messageCreate', async (message) => {
-  if (message.content === '!ping') {
-    await message.reply('Pong!');
-  }
-});
-
-// Log in with bot token
-client.login(process.env.TOKEN);
-
+// Use your specific environment variable name
+client.login(process.env.DiscordTOKEN);
