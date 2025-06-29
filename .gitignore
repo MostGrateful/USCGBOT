@@ -1,0 +1,35 @@
+# Node modules — too large, not needed
+node_modules/
+
+# Environment variables — contains your bot token, DB credentials, etc.
+.env
+db.js
+.sql
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / System files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor settings
+.vscode/
+.idea/
+
+# Build files (if using TypeScript, Babel, etc.)
+dist/
+build/
+*.tsbuildinfo
+
+# Temporary files
+*.tmp
+*.temp
+
+# dotenvx cache
+.env.vault
