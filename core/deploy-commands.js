@@ -42,11 +42,11 @@ console.log('🔄 Loading slash commands...');
 loadCommands(commandsPath);
 
 // 🔐 Validate .env variables
-const token = process.env.DiscordTOKEN;
+const token = process.env.TOKEN;
 const clientId = process.env.CLIENT_ID;
 
 if (!token) {
-    console.error('❌ Missing DiscordTOKEN in .env!');
+    console.error('❌ Missing TOKEN in .env!');
     process.exit(1);
 }
 if (!clientId) {
@@ -78,4 +78,3 @@ const rest = new REST({ version: '10' }).setToken(token);
         }
     }
 })();
-
