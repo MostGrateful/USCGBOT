@@ -1,14 +1,14 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const db = require('../../core/db');
 const { sendLogEmbed } = require('../../utils/logHelper');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('setlog')
-    .setDescription('Set the log channel for this server')
+    .setDescription('🔧 Set the log channel for this server. A channel must be selected.')
     .addChannelOption(option =>
       option.setName('channel')
-        .setDescription('The channel to send logs to')
-        .addChannelTypes(ChannelType.GuildText)
+        .setDescription('📍 Select the channel where logs should be sent. This is required.')
         .setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
@@ -17,16 +17,21 @@ module.exports = {
     try {
       await interaction.deferReply({ ephemeral: true });
 
-      const db = client.db;
-      const guildId = interaction.guild.id;
       const channel = interaction.options.getChannel('channel');
+      if (!channel) {
+        return interaction.editReply({ content: '❌ Please select a valid channel.' });
+      }
 
-      // Save to the database
-      await db.query('INSERT INTO guild_settings (guild_id, log_channel) VALUES (?, ?) ON DUPLICATE KEY UPDATE log_channel = VALUES(log_channel)', [guildId, channel.id]);
+      const guildId = interaction.guild.id;
 
-      await interaction.editReply({ content: `✅ Log channel has been set to ${channel}.` });
+      await db.query(
+        'INSERT INTO guild_settings (guild_id, log_channel) VALUES (?, ?) ON DUPLICATE KEY UPDATE log_channel = VALUES(log_channel)',
+        [guildId, channel.id]
+      );
 
-      await sendLogEmbed(client, interaction, `Log channel has been set to <#${channel.id}>.`);
+      await interaction.editReply({ content: `✅ Logs will now be sent to ${channel}.` });
+
+      await sendLogEmbed(client, interaction, `Log channel set to ${channel}`);
     } catch (err) {
       console.error('[Slash Command Error]', err);
       if (!interaction.replied) {
@@ -37,5 +42,3 @@ module.exports = {
     }
   },
 };
-
-

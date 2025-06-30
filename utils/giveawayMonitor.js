@@ -1,42 +1,33 @@
 const { EmbedBuilder } = require('discord.js');
-const db = require('../core/db'); // Adjust path if needed
+const db = require('../core/db');
 const { selectWinners } = require('./giveawayUtils');
 
 async function startGiveawayMonitor(client) {
   console.log('[Giveaway Monitor] Started.');
 
   setInterval(async () => {
-    try {
-      console.log('[Giveaway Monitor] Checking for ended giveaways...');
+    console.log('[Giveaway Monitor] Checking for ended giveaways...');
 
-      const [rows] = await db.query(
-        'SELECT * FROM giveaways WHERE is_active = 1 AND winners_announced = 0 AND end_time <= NOW()'
-      );
+    const [rows] = await db.query(
+      'SELECT * FROM giveaways WHERE is_active = 1 AND winners_announced = 0 AND end_time <= NOW()'
+    );
 
-      if (rows.length === 0) {
-        console.log('[Giveaway Monitor] No ended giveaways found.');
-        return;
-      }
+    if (!rows.length) {
+      console.log('[Giveaway Monitor] No ended giveaways found.');
+      return;
+    }
 
-      for (const giveaway of rows) {
-        console.log(`[Giveaway Monitor] Processing giveaway ID ${giveaway.id}`);
-
+    for (const giveaway of rows) {
+      try {
         const channel = await client.channels.fetch(giveaway.channel_id).catch(() => null);
-        if (!channel) {
-          console.warn(`[Giveaway Monitor] Channel not found: ${giveaway.channel_id}`);
-          continue;
-        }
+        if (!channel) continue;
 
         const message = await channel.messages.fetch(giveaway.message_id).catch(() => null);
-        if (!message) {
-          console.warn(`[Giveaway Monitor] Message not found: ${giveaway.message_id}`);
-          continue;
-        }
+        if (!message) continue;
 
         const reaction = message.reactions.cache.get('🎉');
         if (!reaction) {
-          console.log(`[Giveaway Monitor] No 🎉 reactions found for giveaway ID ${giveaway.id}`);
-          await channel.send(`❌ No entries for giveaway **${giveaway.prize}**.`);
+          await channel.send(`❌ No entries found for giveaway **${giveaway.prize}**.`);
           await db.query('UPDATE giveaways SET winners_announced = 1, is_active = 0 WHERE id = ?', [giveaway.id]);
           continue;
         }
@@ -44,8 +35,6 @@ async function startGiveawayMonitor(client) {
         const users = await reaction.users.fetch().catch(() => new Map());
         const filteredUsers = users.filter(u => !u.bot);
         const winners = selectWinners(filteredUsers, giveaway.winner_count);
-
-        console.log(`[Giveaway Monitor] Winners selected:`, winners.map(u => u.tag || u.id));
 
         const winnerText = winners.length
           ? winners.map(w => `<@${w.id}>`).join(', ')
@@ -61,12 +50,13 @@ async function startGiveawayMonitor(client) {
         await channel.send({ embeds: [embed] });
 
         await db.query('UPDATE giveaways SET winners_announced = 1, is_active = 0 WHERE id = ?', [giveaway.id]);
-        console.log(`[Giveaway Monitor] Giveaway ID ${giveaway.id} marked as completed.`);
+
+        console.log(`[Giveaway Monitor] Giveaway ID ${giveaway.id} ended and winners announced.`);
+      } catch (err) {
+        console.error(`❌ Error finalizing giveaway ID ${giveaway.id}:`, err);
       }
-    } catch (err) {
-      console.error('[Giveaway Monitor] Fatal error:', err);
     }
-  }, 30 * 1000); // Runs every 30 seconds
+  }, 30 * 1000); // check every 30 seconds
 }
 
 module.exports = { startGiveawayMonitor };

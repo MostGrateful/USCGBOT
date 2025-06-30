@@ -1,46 +1,38 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
-const { sendLogEmbed } = require('../../utils/logHelper');
 const db = require('../../core/db');
 const { selectWinners } = require('../../utils/giveawayUtils');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('rerollgiveaway')
-    .setDescription('Reroll the winners of a completed giveaway.')
-    .addStringOption(option =>
-      option.setName('giveaway_id')
-        .setDescription('The ID of the giveaway to reroll')
+    .setDescription('Reroll a giveaway to pick new winners')
+    .addIntegerOption(option =>
+      option.setName('id')
+        .setDescription('The giveaway ID')
         .setRequired(true)
     )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 
-  async execute(interaction, client) {
-    await interaction.deferReply({ ephemeral: true });
-
-    const giveawayId = interaction.options.getString('giveaway_id');
-
+  async execute(interaction) {
     try {
-      const [results] = await db.query('SELECT * FROM giveaways WHERE id = ?', [giveawayId]);
-      if (results.length === 0) {
-        return await interaction.editReply({ content: '❌ Giveaway not found.' });
+      await interaction.deferReply({ ephemeral: true });
+
+      const id = interaction.options.getInteger('id');
+      const [rows] = await db.query('SELECT * FROM giveaways WHERE id = ? AND winners_announced = 1', [id]);
+
+      if (rows.length === 0) {
+        return await interaction.editReply({ content: '❌ No ended giveaway found with that ID.' });
       }
 
-      const giveaway = results[0];
-
-      if (giveaway.is_active) {
-        return await interaction.editReply({ content: '❌ Giveaway is still active. You can only reroll completed giveaways.' });
-      }
-
-      const channel = await client.channels.fetch(giveaway.channel_id).catch(() => null);
-      if (!channel) return await interaction.editReply({ content: '❌ Giveaway channel not found.' });
+      const giveaway = rows[0];
+      const channel = await interaction.client.channels.fetch(giveaway.channel_id).catch(() => null);
+      if (!channel) return await interaction.editReply({ content: '❌ Channel not found.' });
 
       const message = await channel.messages.fetch(giveaway.message_id).catch(() => null);
-      if (!message) return await interaction.editReply({ content: '❌ Giveaway message not found.' });
+      if (!message) return await interaction.editReply({ content: '❌ Message not found.' });
 
       const reaction = message.reactions.cache.get('🎉');
-      if (!reaction) return await interaction.editReply({ content: '❌ No entries to reroll.' });
-
-      const users = await reaction.users.fetch().catch(() => new Map());
+      const users = await reaction.users.fetch();
       const filteredUsers = users.filter(u => !u.bot);
       const newWinners = selectWinners(filteredUsers, giveaway.winner_count);
 
@@ -48,20 +40,21 @@ module.exports = {
         ? newWinners.map(w => `<@${w.id}>`).join(', ')
         : 'No valid entries. 😢';
 
-      const embed = new EmbedBuilder()
-        .setTitle('🔁 Giveaway Rerolled!')
+      const rerollEmbed = new EmbedBuilder()
+        .setTitle('🎉 Giveaway Rerolled!')
         .setDescription(`**Prize:** ${giveaway.prize}\n**New Winners:** ${winnerText}`)
-        .setFooter({ text: `Giveaway ID: ${giveaway.id}` })
         .setTimestamp()
-        .setColor('Orange');
+        .setColor('Yellow');
 
-      await channel.send({ embeds: [embed] });
-      await interaction.editReply({ content: '✅ Giveaway rerolled successfully.' });
-
-      await sendLogEmbed(client, interaction, `Rerolled giveaway **${giveaway.id}** (${giveaway.prize}) → Winners: ${winnerText}`);
+      await channel.send({ embeds: [rerollEmbed] });
+      await interaction.editReply({ content: `✅ Giveaway rerolled.` });
     } catch (err) {
-      console.error(err);
-      await interaction.editReply({ content: '❌ An error occurred while rerolling the giveaway.' });
+      console.error('[Slash Command Error - rerollgiveaway.js]', err);
+      if (!interaction.replied) {
+        await interaction.reply({ content: '❌ An error occurred.', ephemeral: true }).catch(() => {});
+      } else {
+        await interaction.editReply({ content: '❌ An error occurred.' }).catch(() => {});
+      }
     }
   },
 };

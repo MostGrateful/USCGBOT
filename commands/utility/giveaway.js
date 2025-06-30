@@ -1,73 +1,82 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const db = require('../../core/db');
+const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
 const { sendLogEmbed } = require('../../utils/logHelper');
+const ms = require('ms');
+const db = require('../../core/db');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('giveaway')
-    .setDescription('Start a new giveaway.')
+    .setDescription('Start a new giveaway')
     .addStringOption(option =>
-      option.setName('prize')
-        .setDescription('The prize for the giveaway')
+      option.setName('duration')
+        .setDescription('How long the giveaway lasts (e.g., 10m, 2h, 1d)')
         .setRequired(true)
     )
     .addIntegerOption(option =>
       option.setName('winners')
         .setDescription('Number of winners')
-        .setMinValue(1)
         .setRequired(true)
     )
-    .addIntegerOption(option =>
-      option.setName('duration')
-        .setDescription('Duration in minutes')
-        .setMinValue(1)
+    .addStringOption(option =>
+      option.setName('prize')
+        .setDescription('The prize of the giveaway')
+        .setRequired(true)
+    )
+    .addChannelOption(option =>
+      option.setName('channel')
+        .setDescription('The channel to host the giveaway in')
+        .addChannelTypes(ChannelType.GuildText)
         .setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   async execute(interaction, client) {
     try {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: 64 }); // ephemeral: true replacement
 
-      // Check for role named "Giveaway prems"
-      const hasRole = interaction.member.roles.cache.some(role => role.name.toLowerCase() === 'giveaway prems');
-      if (!hasRole) {
-        return await interaction.editReply({ content: '❌ You do not have the "Giveaway prems" role.' });
+      const durationStr = interaction.options.getString('duration');
+      const winnerCount = interaction.options.getInteger('winners');
+      const prize = interaction.options.getString('prize');
+      const targetChannel = interaction.options.getChannel('channel');
+
+      // Check if channel is accessible
+      if (!targetChannel || !targetChannel.send) {
+        return await interaction.editReply({
+          content: '❌ Unable to access the selected channel. Make sure I have permission to view and send messages in it.'
+        });
       }
 
-      const prize = interaction.options.getString('prize');
-      const winners = interaction.options.getInteger('winners');
-      const duration = interaction.options.getInteger('duration');
-      const endTime = new Date(Date.now() + duration * 60000);
+      const durationMs = ms(durationStr);
+      if (!durationMs || durationMs < 10000) {
+        return await interaction.editReply({
+          content: '❌ Invalid duration. Use formats like `10m`, `1h`, or `2d`.'
+        });
+      }
 
-      const embed = {
-        title: '🎉 Giveaway 🎉',
-        description: `**Prize:** ${prize}\n**Ends in:** ${duration} minutes\nReact with 🎉 to enter!\n**Winners:** ${winners}`,
-        color: 0x00AE86,
-        timestamp: endTime,
-        footer: { text: `Ends at` },
-      };
+      const endTime = new Date(Date.now() + durationMs);
+      const giveawayMessage = await targetChannel.send({
+        content: `🎉 **GIVEAWAY STARTED** 🎉\nPrize: **${prize}**\nReact with 🎉 to enter!\nEnds <t:${Math.floor(endTime.getTime() / 1000)}:R>`,
+      });
 
-      const giveawayMessage = await interaction.channel.send({ embeds: [embed] });
       await giveawayMessage.react('🎉');
 
-      // Insert into DB
       await db.query(
-        'INSERT INTO giveaways (message_id, channel_id, prize, winner_count, end_time, creator_id, is_active, winners_announced) VALUES (?, ?, ?, ?, ?, ?, 1, 0)',
-        [giveawayMessage.id, interaction.channel.id, prize, winners, endTime, interaction.user.id]
+        'INSERT INTO giveaways (channel_id, message_id, prize, end_time, winner_count, is_active, winners_announced) VALUES (?, ?, ?, ?, ?, 1, 0)',
+        [targetChannel.id, giveawayMessage.id, prize, endTime, winnerCount]
       );
 
-      await interaction.editReply({ content: `✅ Giveaway for **${prize}** started successfully!` });
+      await interaction.editReply({ content: `✅ Giveaway started in ${targetChannel}` });
 
-      await sendLogEmbed(client, interaction, `Started a giveaway for **${prize}** with **${winners}** winner(s), lasting **${duration}** minute(s).`);
-
+      await sendLogEmbed(client, interaction, `Started a giveaway for **${prize}** in ${targetChannel}`);
     } catch (err) {
-      console.error('[Slash Command Error]', err);
+      console.error('[Slash Command Error - giveaway.js]', err);
       if (!interaction.replied) {
-        await interaction.reply({ content: '❌ An error occurred.', ephemeral: true }).catch(() => {});
+        await interaction.reply({ content: '❌ An error occurred.', flags: 64 }).catch(() => {});
       } else {
-        await interaction.editReply({ content: '❌ An error occurred while creating the giveaway.' }).catch(() => {});
+        await interaction.editReply({ content: '❌ An error occurred.' }).catch(() => {});
       }
     }
-  },
+  }
 };
+
+
