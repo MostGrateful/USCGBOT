@@ -1,37 +1,35 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { sendLogEmbed } = require('../../utils/logHelper');
 
-const OWNER_IDS = ['1021175652243751013', '238058962711216130', '559387780606590986'];
-
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('restart')
-    .setDescription('Restart the bot')
+    .setDescription('Restarts the bot')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
-  name: 'restart',
-  description: 'Restart the bot (prefix)',
-
-  // Slash command
   async execute(interaction, client) {
-    if (!OWNER_IDS.includes(interaction.user.id)) {
-      return interaction.reply({ content: '❌ You are not authorized to use this command.', ephemeral: true });
+    try {
+      await interaction.deferReply({ ephemeral: true });
+
+      await interaction.editReply({ content: '🔄 Restarting bot...' });
+
+      // Log restart action
+      await sendLogEmbed(client, interaction, 'Bot restart initiated.');
+
+      // Give Discord a moment to send the reply before shutting down
+      setTimeout(() => {
+        process.exit(0);
+      }, 1000);
+    } catch (err) {
+      console.error('[Slash Command Error]', err);
+      if (!interaction.replied) {
+        await interaction.reply({ content: '❌ An error occurred.', ephemeral: true }).catch(() => {});
+      } else {
+        await interaction.editReply({ content: '❌ An error occurred while trying to restart.' }).catch(() => {});
+      }
     }
-
-    await interaction.reply({ content: '♻️ Restarting bot...' });
-    await sendLogEmbed(client, interaction, 'Bot is restarting...');
-
-    process.exit(0);
   },
-
-  // Prefix command
-  async run(message, args, client) {
-    if (!OWNER_IDS.includes(message.author.id)) return;
-
-    await message.reply('♻️ Restarting bot...');
-    await sendLogEmbed(client, message, 'Bot is restarting...');
-
-    process.exit(0);
-  }
 };
+
+
 

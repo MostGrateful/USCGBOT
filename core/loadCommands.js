@@ -1,29 +1,38 @@
 const fs = require('fs');
 const path = require('path');
 
-module.exports = async (client) => {
-  client.commands = new Map(); // or Collection if preferred
+/**
+ * Recursively load all slash commands from the commands directory.
+ * @param {Client} client - The Discord client instance.
+ * @returns {Array} Array of slash command data to register with Discord.
+ */
+async function loadCommands(client) {
+  const commands = [];
+  client.commands = new Map();
+
   const commandsPath = path.join(__dirname, '..', 'commands');
 
-  const load = (dir) => {
+  async function readCommands(dir) {
     const files = fs.readdirSync(dir);
+
     for (const file of files) {
-      const filePath = path.join(dir, file);
-      const stat = fs.statSync(filePath);
+      const fullPath = path.join(dir, file);
+      const stat = fs.statSync(fullPath);
 
       if (stat.isDirectory()) {
-        load(filePath);
+        await readCommands(fullPath);
       } else if (file.endsWith('.js')) {
-        const command = require(filePath);
-        if ('data' in command && 'execute' in command) {
+        const command = require(fullPath);
+        if (command.data && command.execute) {
           client.commands.set(command.data.name, command);
-          console.log(`✅ Loaded command: ${command.data.name}`);
-        } else {
-          console.log(`⚠️ Skipped ${filePath}: Missing "data" or "execute"`);
+          commands.push(command.data.toJSON());
         }
       }
     }
-  };
+  }
 
-  load(commandsPath);
-};
+  await readCommands(commandsPath);
+  return commands;
+}
+
+module.exports = { loadCommands };

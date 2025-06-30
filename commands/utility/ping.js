@@ -1,17 +1,30 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { sendLogEmbed } = require('../../utils/logHelper');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('ping')
-    .setDescription('Check bot latency'),
+    .setDescription('Replies with the bot latency'),
 
-  async execute(interaction, client) {
-    const sent = await interaction.reply({ content: 'Pinging...', fetchReply: true });
-    const latency = sent.createdTimestamp - interaction.createdTimestamp;
+  async execute(interaction) {
+    try {
+      await interaction.deferReply({ ephemeral: true });
 
-    await interaction.editReply(`🏓 Pong! Latency is ${latency}ms.`);
-    await sendLogEmbed(client, interaction, `🏓 Ping command used. Latency: ${latency}ms.`);
-  }
+      const sent = await interaction.fetchReply();
+      const latency = sent.createdTimestamp - interaction.createdTimestamp;
+      const apiLatency = Math.round(interaction.client.ws.ping);
+
+      await interaction.editReply({
+        content: `🏓 Pong!\n**Bot Latency:** ${latency}ms\n**API Latency:** ${apiLatency}ms`,
+      });
+    } catch (err) {
+      console.error('[Slash Command Error]', err);
+      if (!interaction.replied) {
+        await interaction.reply({ content: '❌ An error occurred.', ephemeral: true }).catch(() => {});
+      } else {
+        await interaction.editReply({ content: '❌ An error occurred while calculating latency.' }).catch(() => {});
+      }
+    }
+  },
 };
+
 

@@ -1,14 +1,12 @@
-const { Client, Collection, GatewayIntentBits, Partials } = require('discord.js');
 require('dotenv').config();
+const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { loadCommands } = require('./core/loadCommands');
+const { startGiveawayMonitor } = require('./utils/giveawayMonitor');
+const db = require('./core/db');
 const fs = require('fs');
 const path = require('path');
 
-const db = require('./core/db');
-const loadEvents = require('./core/loadEvents');
-const loadCommands = require('./core/loadCommands');
-const { logErrorToChannel } = require('./utils/logError');
-const { startGiveawayMonitor } = require('./utils/giveawayMonitor');
-
+// Create client
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -16,30 +14,44 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessageReactions
-  ],
-  partials: [Partials.Message, Partials.Channel, Partials.Reaction],
+  ]
 });
 
-client.commands = new Collection();
+// Attach DB to client
 client.db = db;
 
-// Load all commands and events
-loadCommands(client);
-loadEvents(client);
+// Load events
+const eventsPath = path.join(__dirname, 'events');
+const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
+for (const file of eventFiles) {
+  const event = require(`./events/${file}`);
+  if (event.once) {
+    client.once(event.name, (...args) => event.execute(...args, client));
+  } else {
+    client.on(event.name, (...args) => event.execute(...args, client));
+  }
+}
 
-// Start monitoring giveaways
+// Load commands
+(async () => {
+  const slashCommands = await loadCommands(client);
+  client.slashCommandsData = slashCommands;
+
+  console.log(`📊 Loaded ${slashCommands.length} slash command(s).`);
+})();
+
+// Start giveaway monitor
 startGiveawayMonitor(client);
+console.log('[Giveaway Monitor] Started.');
 
-// Log in
+// Log in bot
 client.login(process.env.TOKEN);
 
-// Global error handling
-process.on('unhandledRejection', async (error) => {
-  console.error('Unhandled Rejection:', error);
-  await logErrorToChannel(client, error);
+// Error handling
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', err => {
+  console.error('Uncaught Exception:', err);
 });
 
-process.on('uncaughtException', async (error) => {
-  console.error('Uncaught Exception:', error);
-  await logErrorToChannel(client, error);
-});
